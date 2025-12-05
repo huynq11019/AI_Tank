@@ -60,11 +60,15 @@ var TANK_SIZE = 1;
 var BASE_SIZE = 2;
 
 // Tank stats for reference
-var TANK_STATS = {
-	[TANK_LIGHT]: { hp: 80, speed: 0.5, damage: 50, cooldown: 20, bulletSpeed: 1.2 },
-	[TANK_MEDIUM]: { hp: 110, speed: 0.25, damage: 40, cooldown: 10, bulletSpeed: 1.0 },
-	[TANK_HEAVY]: { hp: 170, speed: 0.2, damage: 7, cooldown: 2, bulletSpeed: 0.8 }
-};
+// var TANK_STATS = {
+// 	[TANK_LIGHT]: { hp: 80, speed: 0.5, damage: 50, cooldown: 20, bulletSpeed: 1.2 },
+// 	[TANK_MEDIUM]: { hp: 110, speed: 0.25, damage: 40, cooldown: 10, bulletSpeed: 1.0 },
+// 	[TANK_HEAVY]: { hp: 170, speed: 0.2, damage: 7, cooldown: 2, bulletSpeed: 0.8 }
+// };
+var TANK_MAX_HP = {};
+TANK_MAX_HP[TANK_LIGHT] = 80;
+TANK_MAX_HP[TANK_MEDIUM] = 110;
+TANK_MAX_HP[TANK_HEAVY] = 170;
 
 // ====================================================================================
 //                        BEHIND THE SCENE - NETWORKING CODE
@@ -76,7 +80,7 @@ var logger = new Logger();
 
 var host = "127.0.0.1";
 var port = 3011;
-var key = 0;
+var key = 30;
 
 for (var i=0; i<process.argv.length; i++) {
 	if (process.argv[i] == "-h") host = process.argv[i + 1];
@@ -86,7 +90,10 @@ for (var i=0; i<process.argv.length; i++) {
 }
 if (host == null) host = "127.0.0.1";
 if (port == null) port = 3011;
-if (key == null) key = 0;
+if (key == null) key = 30;
+
+// Show startup information
+console.log("[my_smart_bot] Starting: host=" + host + " port=" + port + " key=" + key);
 
 // Encoding/Decoding functions
 var EncodeInt8 = function (number) { var arr = new Int8Array(1); arr[0] = number; return String.fromCharCode(arr[0]); };
@@ -161,7 +168,11 @@ function OnMessage(data) {
 	var readOffset = 0;
 	while (true) {
 		var command = DecodeUInt8(data, readOffset); readOffset++;
-		if (command == COMMAND_SEND_TEAM) { g_team = DecodeUInt8(data, readOffset); readOffset++; }
+		if (command == COMMAND_SEND_TEAM) {
+			g_team = DecodeUInt8(data, readOffset); readOffset++;
+			var teamName = (g_team == TEAM_1) ? "TEAM_1 (P1)" : (g_team == TEAM_2 ? "TEAM_2 (P2)" : "Unknown");
+			console.log("[my_smart_bot] Received assign team: " + teamName + " (key=" + key + ")");
+		}
 		else if (command == COMMAND_UPDATE_STATE) {
 			var state = DecodeUInt8(data, readOffset); readOffset++;
 			if (g_state == STATE_WAITING_FOR_PLAYERS && state == STATE_TANK_PLACEMENT) {
@@ -293,6 +304,7 @@ var g_commandToBeSent = "";
 // ====================================================================================
 //                          COMMAND FUNCTIONS
 // ====================================================================================
+
 function PlaceTank(type, x, y) {
 	g_commandToBeSent += EncodeUInt8(COMMAND_CONTROL_PLACE);
 	g_commandToBeSent += EncodeUInt8(type);
@@ -301,6 +313,7 @@ function PlaceTank(type, x, y) {
 }
 
 function CommandTank(id, turn, move, shoot) {
+	console.log("[my_smart_bot] CommandTank: id=" + id + " turn=" + turn + " move=" + move + " shoot=" + shoot);
 	if (turn != null) { clientCommands[id].m_direction = turn; }
 	else { clientCommands[id].m_direction = g_tanks[g_team][id].m_direction; }
 	clientCommands[id].m_move = move;
@@ -363,6 +376,7 @@ function GetIncomingStrike() {
 }
 function GetMyBases() { return g_bases[g_team]; }
 function GetEnemyBases() { return g_bases[GetOpponentTeam()]; }
+function getTankMaxHP(type) { return TANK_MAX_HP[type] || 100; }
 
 
 
@@ -381,16 +395,46 @@ function manhattanDistance(x1, y1, x2, y2) {
 	return Math.abs(x2-x1) + Math.abs(y2-y1);
 }
 
+function isWithinMapBounds(x, y) {
+	return x >= 1 && x <= 20 && y >= 1 && y <= 20;
+}
+
 function isWalkable(x, y) {
-	if (x < 1 || x > 20 || y < 1 || y > 20) return false;
+	if (!isWithinMapBounds(x, y)) return false;
 	var tile = GetTileAt(Math.floor(x), Math.floor(y));
 	return tile == BLOCK_GROUND;
 }
 
 function isBlocked(x, y) {
-	if (x < 1 || x > 20 || y < 1 || y > 20) return true;
+	if (!isWithinMapBounds(x, y)) return true;
 	var tile = GetTileAt(Math.floor(x), Math.floor(y));
 	return tile != BLOCK_GROUND;
+}
+
+// Finds the nearest tile we can actually stand on when the desired target is blocked
+function resolveTargetTile(targetX, targetY) {
+	var tx = Math.floor(targetX);
+	var ty = Math.floor(targetY);
+	if (isWalkable(tx, ty)) {
+		return { x: tx, y: ty };
+	}
+
+	var maxRadius = 5;
+	for (var radius = 1; radius <= maxRadius; radius++) {
+		for (var dx = -radius; dx <= radius; dx++) {
+			for (var dy = -radius; dy <= radius; dy++) {
+				if (Math.abs(dx) + Math.abs(dy) != radius) continue;
+				var nx = tx + dx;
+				var ny = ty + dy;
+				if (!isWithinMapBounds(nx, ny)) continue;
+				if (isWalkable(nx, ny)) {
+					return { x: nx, y: ny };
+				}
+			}
+		}
+	}
+
+	return null;
 }
 
 // ============================================
@@ -402,6 +446,13 @@ function BFS(startX, startY, targetX, targetY) {
 	startY = Math.floor(startY);
 	targetX = Math.floor(targetX);
 	targetY = Math.floor(targetY);
+
+	var resolvedTarget = resolveTargetTile(targetX, targetY);
+	if (resolvedTarget == null) {
+		return null;
+	}
+	targetX = resolvedTarget.x;
+	targetY = resolvedTarget.y;
 	
 	// If already at target
 	if (startX == targetX && startY == targetY) return [];
@@ -447,8 +498,8 @@ function BFS(startX, startY, targetX, targetY) {
 		// Limit search depth for performance
 		if (queue.length > 400) break;
 	}
-	
 	return null; // No path found
+	// return null; // No path found
 }
 
 // Check if any tank is at position
@@ -478,7 +529,11 @@ function findBestTarget(tank) {
 		var enemy = GetEnemyTank(i);
 		if (enemy && enemy.m_HP > 0) {
 			var dist = distance(tank.m_x, tank.m_y, enemy.m_x, enemy.m_y);
-			var priority = 100 - enemy.m_HP + (20 - dist); // Lower HP = higher priority
+			var priority = 120 - enemy.m_HP + ( dist); // Lower HP = higher priority
+			// nếu đó là thank MEDIUM thì them độ ưu tiên
+			if (enemy.m_type == TANK_MEDIUM) {
+				priority += 20;
+			}
 			targets.push({
 				type: 'tank',
 				x: enemy.m_x,
@@ -495,7 +550,8 @@ function findBestTarget(tank) {
 		var base = enemyBases[i];
 		if (base && base.m_HP > 0) {
 			var dist = distance(tank.m_x, tank.m_y, base.m_x, base.m_y);
-			var priority = (base.m_type == BASE_MAIN) ? 200 - dist : 80 - dist;
+			// xem lại độ ưu tiên chỗ này lúc nào cũng để là main thì liệu có hợp lý không?
+			var priority = (base.m_type == BASE_MAIN) ? 150 - dist : 80 - dist;
 			targets.push({
 				type: 'base',
 				x: base.m_x,
@@ -660,6 +716,24 @@ function detectIncomingBullet(tank) {
 	return null;
 }
 
+function shouldDodgeBullet(tank, bulletDirection, role) {
+	if (!bulletDirection) return false;
+	var maxHp = getTankMaxHP(tank.m_type);
+	var hpRatio = (maxHp > 0) ? (tank.m_HP / maxHp) : 0;
+
+	if (tank.m_type == TANK_LIGHT) {
+		return true; // Light tanks rely on mobility
+	}
+	if (tank.m_type == TANK_MEDIUM) {
+		if (role === 'collector' || role === 'flanker') return true;
+		return hpRatio < 0.8;
+	}
+	if (tank.m_type == TANK_HEAVY) {
+		return hpRatio < 0.35; // Only dodge when chunky tank is hurt
+	}
+	return hpRatio < 0.5;
+}
+
 // ============================================
 // 💣 POWER-UP USAGE STRATEGY
 // ============================================
@@ -773,7 +847,8 @@ function assignRoles() {
 				}
 			}
 		}
-		if (closestIdx >= 0 && closestDist < 10) {
+		// xem tank nào gần nhất thì gán roles collector cho tank đó
+		if (closestIdx >= 0 && closestDist < 15) {
 			tankRoles[closestIdx] = 'collector';
 		}
 	}
@@ -835,8 +910,10 @@ function Update() {
 		
 		// Skip disabled tanks (EMP'd)
 		if (tank.m_disabled > 0) continue;
+		var role = tankRoles[i] || 'attacker';
 		
 		// PRIORITY 1: Dodge incoming strikes
+		// Lưu tiên né đạn đang bay tới 
 		var dodgeDir = getDodgeDirection(tank);
 		if (dodgeDir) {
 			CommandTank(i, dodgeDir, true, false);
@@ -845,13 +922,18 @@ function Update() {
 		
 		// PRIORITY 2: Dodge incoming bullets (optional - can be aggressive)
 		var bulletDodge = detectIncomingBullet(tank);
-		if (bulletDodge && tank.m_HP < 50) { // Only dodge if low HP
+		
+		// tỷ chỉnh né đạn theo loại tank  nữa
+		// Vd: thank nặng thì ít né đạn hơn, tank nhẹ máu yêu di chuyển nhanh thì né đạn nhiều hơn
+		// VD: TANK_LIGHT có tốc độ nhưng sát thương không nhiều thì auto né
+		// còn TANK_HEAVY thì chỉ né khi máu thấp
+		if (shouldDodgeBullet(tank, bulletDodge, role)) {
 			CommandTank(i, bulletDodge, true, true);
 			continue;
 		}
 		
 		// PRIORITY 3: Execute role-based behavior
-		var role = tankRoles[i] || 'attacker';
+
 		var target = findBestTarget(tank);
 		
 		if (role == 'collector') {
@@ -868,6 +950,7 @@ function Update() {
 		}
 		
 		if (target) {
+			console.log("[my_smart_bot] target Tank " + i + " targetType: " + target.type + " at (" + target.x + ", " + target.y + ")");
 			// Check if we should shoot
 			var shootInfo = shouldShoot(tank, target);
 			
@@ -889,11 +972,12 @@ function Update() {
 				}
 			}
 		} else {
+			console.log("[my_smart_bot] has no target Tank " + i );
 			// No target - patrol towards enemy base
 			var enemyBases = GetEnemyBases();
 			if (enemyBases.length > 0 && enemyBases[0]) {
 				var dir = getDirectionTowards(tank.m_x, tank.m_y, enemyBases[0].m_x, enemyBases[0].m_y);
-				CommandTank(i, dir, true, true);
+				CommandTank(i, dir, true, false);
 			}
 		}
 	}

@@ -193,6 +193,12 @@ module.exports = function Game (key1, key2, replayFilename) {
 						this.m_player2Index = sender;
 						team = Enum.TEAM_2;
 					}
+
+					// Log assignment
+					if (typeof team !== 'undefined') {
+						var teamName = (team == Enum.TEAM_1) ? 'TEAM_1 (P1)' : (team == Enum.TEAM_2) ? 'TEAM_2 (P2)' : 'Unknown';
+						console.log('[Server] Player ' + sender + ' authenticated with key=' + key + ' assigned to ' + teamName);
+					}
 					// Prepare to tell him his team id.
 					// We merge this packet to fullsync and send it below.
 					announceTeamPacket += Network.EncodeUInt8(Enum.COMMAND_SEND_TEAM);

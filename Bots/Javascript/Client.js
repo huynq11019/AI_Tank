@@ -81,7 +81,7 @@ var logger = new Logger();
 
 var host = "127.0.0.1";
 var port = 3011;
-var key = 0;
+var key = 11;
 
 for (var i=0; i<process.argv.length; i++) {
 	if (process.argv[i] == "-h") {
@@ -99,7 +99,10 @@ for (var i=0; i<process.argv.length; i++) {
 }
 if (host == null) host = "127.0.0.1";
 if (port == null) port = 3011;
-if (key == null) key = 0;
+if (key == null) key = 11;
+
+// Show startup information
+console.log("[Client] Starting: host=" + host + " port=" + port + " key=" + key);
 
 // =============================================
 // Some helping function
@@ -324,6 +327,8 @@ function OnMessage(data) {
 		
 		if (command == COMMAND_SEND_TEAM) {
 			g_team = DecodeUInt8 (data, readOffset); readOffset ++;
+			var teamName = (g_team == TEAM_1) ? "TEAM_1 (P1)" : (g_team == TEAM_2 ? "TEAM_2 (P2)" : "Unknown");
+			console.log("[Client] Received assign team: " + teamName + " (key=" + key + ")");
 		}
 		else if (command == COMMAND_UPDATE_STATE) {
 			state = DecodeUInt8 (data, readOffset);
@@ -679,6 +684,7 @@ function CommandTank (id, turn, move, shoot) {
 	// Duplicate command will overwrite the previous one.
 	// We just send one.
 	// Turn can be null, it won't change a tank direction.
+	shoot = false// tạm thời disable bắn để test AI
 	if (turn != null) {
 		clientCommands[id].m_direction = turn;
 	}
@@ -873,12 +879,6 @@ function Update() {
 		}
 		return;
 	}
-	
-	
-	
-	
-	
-	
 	
 	
 	// =========================================================================================================

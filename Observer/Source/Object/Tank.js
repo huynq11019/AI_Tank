@@ -6,10 +6,21 @@ function Tank (game, id, team, type) {
 	TANK_MAX_HP [TANK_LIGHT] = 80;
 	TANK_MAX_HP [TANK_MEDIUM] = 110;
 	TANK_MAX_HP [TANK_HEAVY] = 170;
+
+	var TANK_TYPE_LABEL = new Array();
+	TANK_TYPE_LABEL[TANK_LIGHT] = "Light";
+	TANK_TYPE_LABEL[TANK_MEDIUM] = "Medium";
+	TANK_TYPE_LABEL[TANK_HEAVY] = "Heavy";
 	
 	var CANNON_MUZZLE_OFFSET = 1.2;
 	var GUN_MUZZLE_OFFSET = 0.5;
+	var LABEL_OFFSET_Y = -14;
+	var LABEL_FONT = "BlackOpsOne";
+	var LABEL_SIZE = 14;
 	
+	var TEAM_LABEL_COLOR = new Array();
+	TEAM_LABEL_COLOR[TEAM_1] = { r: 218, g: 68, b: 83 };
+	TEAM_LABEL_COLOR[TEAM_2] = { r: 64, g: 140, b: 202 };
 
 	// Identifier
 	this.m_id = id;
@@ -27,6 +38,11 @@ function Tank (game, id, team, type) {
 		this.m_disabled = 0;
 	}
 	this.m_data = new Array();
+
+	this.GetLabelText = function () {
+		var typeLabel = TANK_TYPE_LABEL[this.m_type] || "Tank";
+		return "T" + this.m_team + " " + typeLabel + " #" + this.m_id;
+	}
 	
 	// Current state
 	this.m_x = -1;
@@ -267,6 +283,11 @@ function Tank (game, id, team, type) {
 			if (this.m_HP > 0) {
 				g_graphicEngine.FillCanvas (g_context, 192, 0, 0, 1, this.m_x * BLOCK_SIZE + g_gsActionPhase.m_screenShakeX, this.m_y * BLOCK_SIZE + g_gsActionPhase.m_screenShakeY + HP_BAR_OFFSET, BLOCK_SIZE, 4);
 				g_graphicEngine.FillCanvas (g_context, 0, 192, 0, 1, this.m_x * BLOCK_SIZE + g_gsActionPhase.m_screenShakeX, this.m_y * BLOCK_SIZE + g_gsActionPhase.m_screenShakeY + HP_BAR_OFFSET, BLOCK_SIZE * (this.m_HP / TANK_MAX_HP[this.m_type]), 4);
+
+				var labelColor = TEAM_LABEL_COLOR[this.m_team] || { r: 255, g: 255, b: 255 };
+				var labelX = this.m_x * BLOCK_SIZE + g_gsActionPhase.m_screenShakeX + BLOCK_SIZE * 0.5;
+				var labelY = this.m_y * BLOCK_SIZE + g_gsActionPhase.m_screenShakeY + LABEL_OFFSET_Y;
+				g_graphicEngine.DrawTextRGB (g_context, this.GetLabelText(), labelX, labelY, 140, LABEL_FONT, LABEL_SIZE, false, false, "center", "bottom", labelColor.r, labelColor.g, labelColor.b, 0.95, false, true, 0, 0, 0);
 			}
 		}
 	}
